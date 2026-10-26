@@ -1,0 +1,17 @@
+{
+  "name": "maples-clues",
+  "version": "1.0.0",
+  "description": "Two-player online deduction card game: give Similar / Not similar clues about your opponent's hidden card.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
