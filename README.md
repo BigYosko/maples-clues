@@ -36,5 +36,5 @@ On the free plan the server sleeps after about 15 minutes with no visitors, and 
 - `src/game.js`: game rules, clue routing and validation, per-player views
 - `src/store.js`: game persistence
 - `src/server.js`: HTTP and WebSocket server
-- `public/`: mobile web client (`art.js` holds the SVG card illustrations)
+- `public/`: mobile web client: `arena.js` (shared duel field and card animations), `art.js` (SVG card illustrations), `ui.js` (card helpers), `app.js` (screens, networking, menus)
 - `test/`: automated tests

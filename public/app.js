@@ -1,15 +1,12 @@
 import { ANIMALS, ACCESSORIES, LOCATIONS, CARDS } from '/shared/cards.js';
-import { cardArt, cardBackArt, animalArt, accessoryArt, locationArt } from '/art.js';
+import { animalArt, accessoryArt, locationArt } from '/art.js';
+import { esc, cardHTML, cardName, PILE_LABEL } from '/ui.js';
+import { arenaHTML, captureRects, animateChanges, bounceBack } from '/arena.js';
 
 const $app = document.getElementById('app');
 const $modal = document.getElementById('modal');
 const $toast = document.getElementById('toast');
 const $conn = document.getElementById('conn');
-
-const PILE_LABEL = {
-  similar: { en: 'Similar', he: 'דומה' },
-  notSimilar: { en: 'Not similar', he: 'לא דומה' },
-};
 
 const params = new URLSearchParams(location.search);
 let roomCode = (params.get('room') || '').toUpperCase() || null;
@@ -21,39 +18,19 @@ let selectedCard = null;
 let lobbyError = '';
 let pending = null; // request waiting for the socket to open
 let retryDelay = 500;
-let seenPileCounts = null; // to highlight cards that just arrived
-let freshCards = new Set();
 let modalState = null;
+let lastPlay = null; // { cardId, pile } of the clue we just sent, for the wrong-pile bounce
 
 // ---------- storage (tolerant of private mode) ----------
 const store = {
   get(k) { try { return sessionStorage.getItem(k) ?? localStorage.getItem(k); } catch { return null; } },
   getSession(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+  getLocal(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { sessionStorage.setItem(k, v); localStorage.setItem(k, v); } catch {} },
   del(k) { try { sessionStorage.removeItem(k); localStorage.removeItem(k); } catch {} },
 };
 const tokenKey = (code) => `mc:token:${code}`;
 const savedName = () => store.get('mc:name') || '';
-
-// ---------- helpers ----------
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const keysOf = (c) => ({ animal: ANIMALS[c.animal].key, accessory: ACCESSORIES[c.accessory].key, location: LOCATIONS[c.location].key });
-const artCache = new Map();
-function art(card) {
-  if (!artCache.has(card.id)) artCache.set(card.id, cardArt(card, keysOf(card)));
-  return artCache.get(card.id);
-}
-const cardName = (c) => `${ANIMALS[c.animal].name}, ${ACCESSORIES[c.accessory].name}, ${LOCATIONS[c.location].name}`;
-
-function cardHTML(card, { size = 'md', extra = '', attrs = '' } = {}) {
-  return `<div class="card ${size} ${extra}" ${attrs} aria-label="${esc(cardName(card))}">
-    <div class="art">${art(card)}</div>
-    <div class="lbl"><b>${ANIMALS[card.animal].name}</b><span>${ACCESSORIES[card.accessory].name}</span><span>${LOCATIONS[card.location].name}</span></div>
-  </div>`;
-}
-function backHTML(size = 'md', label = 'Your hidden card') {
-  return `<div class="card back ${size}"><div class="art">${cardBackArt()}</div><div class="lbl"><b>?</b><span>${label}</span></div></div>`;
-}
 
 function toast(msg, kind = 'err') {
   $toast.textContent = msg;
@@ -94,45 +71,67 @@ function onMessage(msg) {
   if (msg.type === 'joined') {
     roomCode = msg.code;
     store.set(tokenKey(msg.code), msg.token);
+    store.set('mc:last', msg.code);
     joiningViaLink = false;
     history.replaceState(null, '', `?room=${msg.code}`);
   } else if (msg.type === 'state') {
-    trackFresh(msg.state);
-    const wasMyTurn = view && view.yourTurn;
+    const prev = view;
     view = msg.state;
-    if (selectedCard !== null && !view.you.hand.some((c) => c.id === selectedCard)) selectedCard = null;
-    if (!wasMyTurn && view.yourTurn && view.status === 'playing') toast('Your turn!', 'ok');
-    render();
-    if (modalState) renderModal();
+    if (selectedCard !== null && !(view.yourTurn && view.you.hand.some((c) => c.id === selectedCard))) selectedCard = null;
+    render(prev);
+    if (prev && prev.status !== 'finished' && view.status === 'finished') {
+      setTimeout(() => openModal({ kind: 'result' }), 900);
+    } else if (modalState) renderModal();
   } else if (msg.type === 'error') {
     if (msg.request === 'resume' || (msg.request === 'join' && !view)) {
       if (msg.request === 'resume') store.del(tokenKey(roomCode));
       lobbyError = msg.message;
       leaveRoom();
     } else {
+      if (msg.request === 'play' && lastPlay) bounceBack($app, lastPlay.cardId, lastPlay.pile);
       toast(msg.message);
     }
+    lastPlay = null;
   }
 }
 
-function trackFresh(state) {
-  const piles = state.you.piles;
-  const counts = { similar: piles.similar.length, notSimilar: piles.notSimilar.length };
-  freshCards = new Set();
-  if (seenPileCounts && view && view.code === state.code) {
-    for (const p of ['similar', 'notSimilar']) {
-      piles[p].slice(seenPileCounts[p]).forEach((e) => freshCards.add(e.cardId));
-    }
-    if (freshCards.size) toast(`${state.opponent.name} gave you a new clue.`, 'ok');
-  }
-  seenPileCounts = counts;
+// ---------- leaving: confirm before the phone's Back button exits ----------
+let trapArmed = false;
+let leavingViaBack = false;
+
+function armTrap() {
+  if (trapArmed || !roomCode || !view) return;
+  history.pushState({ trap: true }, '', location.href);
+  trapArmed = true;
+}
+
+window.addEventListener('popstate', () => {
+  if (leavingViaBack) { leavingViaBack = false; leaveRoom(); return; }
+  if (!trapArmed) return;
+  trapArmed = false;
+  if (!roomCode || !view) return;
+  // Back closes an open panel first; otherwise ask before leaving.
+  if (modalState && modalState.kind !== 'leave') closeModal();
+  else openModal({ kind: 'leave' });
+  armTrap();
+});
+
+// Browsers ignore history entries added without a user gesture, so (re)arm on touch.
+document.addEventListener('pointerdown', armTrap, true);
+
+window.addEventListener('beforeunload', (e) => {
+  if (view && view.status === 'playing' && !leavingViaBack) { e.preventDefault(); e.returnValue = ''; }
+});
+
+function leaveGame() {
+  closeModal();
+  if (trapArmed) { trapArmed = false; leavingViaBack = true; history.back(); } else leaveRoom();
 }
 
 function leaveRoom() {
   view = null;
   roomCode = null;
   joiningViaLink = false;
-  seenPileCounts = null;
   selectedCard = null;
   closeModal();
   history.replaceState(null, '', location.pathname);
@@ -140,26 +139,30 @@ function leaveRoom() {
 }
 
 // ---------- rendering ----------
-function render() {
+function render(prev = null) {
+  document.body.classList.toggle('in-game', !!view && view.status !== 'waiting');
   if (!view) return renderLobby();
   if (view.status === 'waiting') return renderWaiting();
-  renderGame();
+  renderGame(prev);
 }
 
 function renderLobby() {
   const linkJoin = roomCode && joiningViaLink;
+  const last = store.getLocal('mc:last');
+  const canResume = !linkJoin && last && store.getLocal(tokenKey(last));
   $app.innerHTML = `
     <section class="lobby">
       <div class="hero">${cardHTML(CARDS[5], { size: 'lg' })}</div>
       <h1>Maple's Clues</h1>
       <p class="sub">Give your opponent clues about their hidden card. Work out yours before they work out theirs.</p>
       ${lobbyError ? `<p class="error">${esc(lobbyError)}</p>` : ''}
+      ${canResume ? `<button class="btn primary" id="resume">Return to game ${esc(last)}</button>` : ''}
       <label class="field">Your name<input id="name" maxlength="20" autocomplete="nickname" value="${esc(savedName())}" placeholder="e.g. Rotem"></label>
       ${linkJoin ? `
         <button class="btn primary" id="joinLink">Join game ${esc(roomCode)}</button>
         <button class="btn link" id="toLobby">Start a different game</button>
       ` : `
-        <button class="btn primary" id="create">Create a new game</button>
+        <button class="btn ${canResume ? '' : 'primary'}" id="create">Create a new game</button>
         <div class="or"><span>or join a friend</span></div>
         <div class="row"><input id="code" maxlength="5" placeholder="CODE" autocapitalize="characters" value="${esc(roomCode || '')}"><button class="btn" id="join">Join</button></div>
       `}
@@ -172,6 +175,7 @@ function renderLobby() {
     return n;
   };
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+  on('resume', () => { lobbyError = ''; roomCode = last; send({ type: 'resume', code: last, token: store.getLocal(tokenKey(last)) }); });
   on('create', () => { lobbyError = ''; send({ type: 'create', name: name() }); });
   on('join', () => {
     const code = document.getElementById('code').value.trim().toUpperCase();
@@ -188,8 +192,8 @@ function rulesHTML() {
   return `<ul>
     <li>49 cards. Each has an <b>animal</b>, an <b>accessory</b> and a <b>location</b>. Every animal, accessory and location appears on exactly 7 cards.</li>
     <li>You hold 5 cards. Your <b>hidden card</b> is face down: you can't see it, but your opponent can, and you can see theirs.</li>
-    <li>On your turn, play a card from your hand into your opponent's <b>Similar (דומה)</b> pile if it shares at least one attribute with their hidden card, or into their <b>Not similar (לא דומה)</b> pile if it shares none. A wrong choice is rejected, so you can try again. Then draw a card.</li>
-    <li>The cards your opponent plays build up <b>your own</b> two clue piles. Use them to work out your hidden card.</li>
+    <li>On your turn, tap a card in your hand, then tap your opponent's <b>Similar (דומה)</b> pile if it shares at least one attribute with their hidden card, or their <b>Not similar (לא דומה)</b> pile if it shares none. A wrong choice bounces back, so you can try again. Then you draw a card.</li>
+    <li>The cards your opponent plays land in <b>your own</b> two piles at the bottom. Tap a pile to see all its cards and work out your hidden card.</li>
     <li>You have <b>3 guesses</b> per game, at most one per turn, made before you play your clue. Guess right to win. Use up all 3 wrong and you lose.</li>
     <li>When the deck runs out, keep playing from your hand. If both hands empty with no winner, it's a draw.</li>
   </ul>`;
@@ -218,139 +222,55 @@ function renderWaiting() {
     }
     try { await navigator.clipboard.writeText(url); toast('Link copied!', 'ok'); } catch { prompt('Copy this link:', url); }
   };
-  document.getElementById('leave').onclick = () => leaveRoom();
+  document.getElementById('leave').onclick = () => leaveGame();
 }
 
-function pileHTML(piles, which, owner) {
-  const entries = piles[which];
-  const label = PILE_LABEL[which];
-  return `<button class="pile ${which}" data-pile="${which}" data-owner="${owner}">
-    <div class="pile-head"><span class="pile-name">${label.en} <span class="he" lang="he" dir="rtl">${label.he}</span></span><span class="count">${entries.length}</span></div>
-    <div class="pile-cards">
-      ${entries.length ? entries.map((e) => cardHTML(e.card, { size: 'sm', extra: owner === 'you' && freshCards.has(e.cardId) ? 'fresh' : '' })).join('') : '<span class="empty">No cards yet</span>'}
-    </div>
-  </button>`;
-}
-
-function renderGame() {
+function renderGame(prev) {
   const v = view;
-  const opp = v.opponent;
-  const finished = v.status === 'finished';
-  const statusText = finished
-    ? (v.result.winner === null ? 'Draw' : v.result.winner === v.you.seat ? 'You won!' : `${esc(opp.name)} won`)
-    : v.yourTurn ? 'Your turn' : `${esc(opp.name)}'s turn`;
-  const handEmpty = v.you.hand.length === 0;
-  const canGuess = v.yourTurn && !v.you.guessedThisTurn && v.you.guessesLeft > 0;
-
-  let actionHint = '';
-  if (!finished) {
-    if (!v.yourTurn) actionHint = `Waiting for ${esc(opp.name)} to play a clue…`;
-    else if (handEmpty) actionHint = 'You have no cards left. Guess or pass.';
-    else if (selectedCard === null) actionHint = v.you.guessedThisTurn
-      ? 'Wrong guess. Now play a clue card to finish your turn.'
-      : `Tap a card to give ${esc(opp.name)} a clue, or guess your hidden card first.`;
-    else actionHint = `Is it similar to ${esc(opp.name)}'s hidden card?`;
-  }
-
+  const before = prev ? captureRects($app) : null;
   $app.innerHTML = `
     <header class="top">
-      <div class="top-meta"><b>${esc(v.code)}</b><span class="muted">Deck ${v.deckCount}</span></div>
-      <div class="status ${finished ? 'done' : v.yourTurn ? 'mine' : ''}">${statusText}</div>
+      <button class="icon-btn" id="menu" aria-label="Menu">☰</button>
+      <div class="code">Game <b>${esc(v.code)}</b></div>
       <button class="btn guide-btn" data-guide>Guide</button>
     </header>
-
-    ${finished ? `
-      <section class="panel result">
-        <h2>${statusText}</h2>
-        <p>${esc(v.result.reason)}</p>
-        <div class="reveal">
-          <div>${cardHTML(v.you.hidden, { size: 'md' })}<div class="cap">Your hidden card</div></div>
-          <div>${cardHTML(opp.hidden, { size: 'md' })}<div class="cap">${esc(opp.name)}'s hidden card</div></div>
-        </div>
-        <button class="btn primary" id="newGame">New game</button>
-      </section>` : ''}
-
-    <section class="panel opp">
-      <div class="opp-card">${cardHTML(opp.hidden, { size: 'md', extra: 'target' })}</div>
-      <div class="opp-info">
-        <h2>${esc(opp.name)}'s hidden card</h2>
-        <p class="muted">${esc(opp.name)} can't see it. You give them clues about it.</p>
-        <p class="small">${opp.handCount} cards in hand · ${opp.guessesLeft} guess${opp.guessesLeft === 1 ? '' : 'es'} left</p>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Your clue piles</h2>
-      <p class="muted small">Cards ${esc(opp.name)} played about <b>your</b> hidden card. Tap a pile to look closer.</p>
-      <div class="piles">
-        ${pileHTML(v.you.piles, 'similar', 'you')}
-        ${pileHTML(v.you.piles, 'notSimilar', 'you')}
-      </div>
-    </section>
-
-    <section class="panel me">
-      <div class="me-row">
-        <div class="mine-hidden">${backHTML('md')}</div>
-        <div class="me-info">
-          <h2>${esc(v.you.name)} (you)</h2>
-          <p class="small">${v.you.guessesLeft} of 3 guesses left${v.you.guessedThisTurn && !finished ? ' · guessed this turn' : ''}</p>
-          ${v.you.guesses.length ? `<p class="small muted">Wrong guesses: ${v.you.guesses.filter((g) => !g.correct).map((g) => esc(cardName(g.card))).join('; ')}</p>` : ''}
-          ${!finished ? `<button class="btn guess" id="guess" ${canGuess ? '' : 'disabled'}>Guess my card</button>` : ''}
-          ${!finished && v.yourTurn && handEmpty ? '<button class="btn" id="pass">Pass</button>' : ''}
-        </div>
-      </div>
-    </section>
-
-    ${!finished ? `
-    <section class="panel hand-panel ${v.yourTurn ? 'active' : ''}">
-      <h2>Your hand</h2>
-      <p class="hint">${actionHint}</p>
-      <div class="hand">
-        ${v.you.hand.map((c) => cardHTML(c, { size: 'md', extra: `pick ${selectedCard === c.id ? 'selected' : ''}`, attrs: `data-card="${c.id}" role="button" tabindex="0"` })).join('') || '<span class="empty">No cards</span>'}
-      </div>
-      ${v.yourTurn && selectedCard !== null ? `
-        <div class="play-actions">
-          <button class="btn sim" data-play="similar">Similar <span lang="he">דומה</span></button>
-          <button class="btn notsim" data-play="notSimilar">Not similar <span lang="he">לא דומה</span></button>
-        </div>
-        <p class="muted small center">Goes into ${esc(opp.name)}'s pile</p>` : ''}
-    </section>` : ''}
-
-    <details class="panel">
-      <summary>Clues you gave ${esc(opp.name)} (${opp.piles.similar.length + opp.piles.notSimilar.length})</summary>
-      <p class="muted small">These are ${esc(opp.name)}'s piles, about their hidden card. They're shown here for reference only.</p>
-      <div class="piles">
-        ${pileHTML(opp.piles, 'similar', 'opp')}
-        ${pileHTML(opp.piles, 'notSimilar', 'opp')}
-      </div>
-    </details>
-
-    <details class="panel">
-      <summary>Game log</summary>
-      <ol class="log">${v.log.slice().reverse().map((l) => `<li>${esc(l.text)}</li>`).join('')}</ol>
-    </details>
-
-    <details class="panel"><summary>How to play</summary>${rulesHTML()}</details>
-  `;
+    ${arenaHTML(v, { selected: selectedCard })}`;
+  animateChanges(prev, v, before, $app);
 
   $app.querySelectorAll('[data-card]').forEach((el) => {
     el.onclick = () => {
       const id = Number(el.dataset.card);
-      if (!v.yourTurn) return showCard(CARDS[id]);
+      if (!v.yourTurn) return openModal({ kind: 'card', card: CARDS[id] });
       selectedCard = selectedCard === id ? null : id;
       render();
     };
   });
-  $app.querySelectorAll('[data-play]').forEach((el) => {
-    el.onclick = () => send({ type: 'play', cardId: selectedCard, pile: el.dataset.play });
+  $app.querySelectorAll('.fpile').forEach((el) => {
+    el.onclick = () => {
+      const { side, pile } = el.dataset;
+      if (side === 'opp' && v.yourTurn && selectedCard !== null) {
+        lastPlay = { cardId: selectedCard, pile };
+        send({ type: 'play', cardId: selectedCard, pile });
+      } else {
+        openModal({ kind: 'pile', side, pile });
+      }
+    };
   });
-  $app.querySelectorAll('.pile').forEach((el) => {
-    el.onclick = () => openModal({ kind: 'pile', owner: el.dataset.owner, pile: el.dataset.pile });
+  $app.querySelectorAll('[data-show-card]').forEach((el) => {
+    el.onclick = () => openModal({ kind: 'card', card: CARDS[Number(el.dataset.showCard)] });
   });
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
   on('guess', () => openModal({ kind: 'guess', animal: null, accessory: null }));
   on('pass', () => send({ type: 'pass' }));
-  on('newGame', () => { store.del(tokenKey(view.code)); leaveRoom(); });
+  on('newGame', newGame);
+  on('menu', () => openModal({ kind: 'menu' }));
+  on('openLog', () => openModal({ kind: 'log' }));
+}
+
+function newGame() {
+  store.del(tokenKey(view.code));
+  store.del('mc:last');
+  leaveGame();
 }
 
 // ---------- modal ----------
@@ -360,8 +280,6 @@ $modal.addEventListener('click', (e) => { if (e.target === $modal || e.target.cl
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 $app.addEventListener('click', (e) => { if (e.target.closest('[data-guide]')) openModal({ kind: 'guide', tab: 'animals' }); });
 
-function showCard(card) { openModal({ kind: 'card', card }); }
-
 function renderModal() {
   if (!modalState || (!view && !['guide', 'card'].includes(modalState.kind))) return closeModal();
   const m = modalState;
@@ -369,41 +287,86 @@ function renderModal() {
   if (m.kind === 'card') {
     body = `${m.back ? '<button class="btn link back-link" id="modalBack">‹ Back to guide</button>' : ''}<div class="center">${cardHTML(m.card, { size: 'xl' })}</div>`;
   } else if (m.kind === 'pile') {
-    const mine = m.owner === 'you';
-    const piles = mine ? view.you.piles : view.opponent.piles;
-    const entries = piles[m.pile];
-    const label = PILE_LABEL[m.pile];
-    body = `
-      <h2 class="${m.pile}-text">${label.en} <span lang="he">${label.he}</span></h2>
-      <p class="muted small">${mine
-        ? `${m.pile === 'similar' ? 'Each of these cards shares <b>at least one</b> attribute with your hidden card.' : 'None of these cards shares <b>any</b> attribute with your hidden card.'}`
-        : `Clues you gave about ${esc(view.opponent.name)}'s hidden card.`} In the order they were played.</p>
-      <div class="pile-list">
-        ${entries.length ? entries.map((e, i) => `<div class="pile-entry">${cardHTML(e.card, { size: 'md', extra: mine && freshCards.has(e.cardId) ? 'fresh' : '' })}<div class="cap">#${i + 1} · turn ${e.turn}</div></div>`).join('') : '<p class="empty">No cards yet.</p>'}
-      </div>`;
+    body = pileHTML(m);
   } else if (m.kind === 'guess') {
     body = guessHTML(m);
   } else if (m.kind === 'guide') {
     body = guideHTML(m);
+  } else if (m.kind === 'leave') {
+    body = `
+      <h2>Leave the game?</h2>
+      <p>Your game stays open. You can come back with the same link, or from the start screen.</p>
+      <div class="two"><button class="btn primary" data-close>Stay</button><button class="btn" id="confirmLeave">Leave</button></div>`;
+  } else if (m.kind === 'menu') {
+    body = `
+      <h2>Menu</h2>
+      <div class="menu-list">
+        <button class="btn" id="mLog">Game log</button>
+        <button class="btn" id="mRules">How to play</button>
+        <button class="btn" id="mLeave">Leave game</button>
+      </div>`;
+  } else if (m.kind === 'rules') {
+    body = `<h2>How to play</h2>${rulesHTML()}`;
+  } else if (m.kind === 'log') {
+    body = `<h2>Game log</h2><ol class="log">${view.log.slice().reverse().map((l) => `<li>${esc(l.text)}</li>`).join('')}</ol>`;
+  } else if (m.kind === 'result') {
+    body = resultHTML();
   }
   $modal.innerHTML = `<div class="sheet"><button class="close" data-close aria-label="Close">✕</button>${body}</div>`;
   $modal.classList.remove('hidden');
 
+  const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
   $modal.querySelectorAll('[data-tab]').forEach((el) => { el.onclick = () => { m.tab = el.dataset.tab; renderModal(); }; });
   $modal.querySelectorAll('[data-show]').forEach((el) => { el.onclick = () => openModal({ kind: 'card', card: CARDS[Number(el.dataset.show)], back: m }); });
-  const back = document.getElementById('modalBack');
-  if (back) back.onclick = () => openModal(m.back);
+  on('modalBack', () => openModal(m.back));
+  on('confirmLeave', leaveGame);
+  on('mLog', () => openModal({ kind: 'log' }));
+  on('mRules', () => openModal({ kind: 'rules' }));
+  on('mLeave', () => openModal({ kind: 'leave' }));
+  on('resultNew', newGame);
 
   if (m.kind === 'guess') {
     $modal.querySelectorAll('[data-animal]').forEach((el) => { el.onclick = () => { m.animal = Number(el.dataset.animal); renderModal(); }; });
     $modal.querySelectorAll('[data-acc]').forEach((el) => { el.onclick = () => { m.accessory = Number(el.dataset.acc); renderModal(); }; });
-    const confirm = document.getElementById('confirmGuess');
-    if (confirm) confirm.onclick = () => {
+    on('confirmGuess', () => {
       const card = CARDS.find((c) => c.animal === m.animal && c.accessory === m.accessory);
       send({ type: 'guess', cardId: card.id });
       closeModal();
-    };
+    });
   }
+}
+
+function pileHTML(m) {
+  const mine = m.side === 'me';
+  const owner = mine ? view.you : view.opponent;
+  const entries = owner.piles[m.pile];
+  const label = PILE_LABEL[m.pile];
+  const explain = mine
+    ? (m.pile === 'similar'
+      ? 'Each of these cards shares <b>at least one</b> attribute with <b>your</b> hidden card.'
+      : 'None of these cards shares <b>any</b> attribute with <b>your</b> hidden card.')
+    : `${esc(view.opponent.name)}'s pile: clues you gave about <b>their</b> hidden card.`;
+  return `
+    <h2 class="${m.pile}-text">${mine ? 'Your' : `${esc(view.opponent.name)}'s`} ${label.en} <span lang="he">${label.he}</span></h2>
+    <p class="muted small">${explain} In the order they were played.</p>
+    <div class="pile-list">
+      ${entries.length ? entries.map((e, i) => `<div class="pile-entry">${cardHTML(e.card, { size: 'md' })}<div class="cap">#${i + 1} · turn ${e.turn}</div></div>`).join('') : '<p class="empty">No cards yet.</p>'}
+    </div>`;
+}
+
+function resultHTML() {
+  const v = view;
+  const title = v.result.winner === null ? "It's a draw" : v.result.winner === v.you.seat ? 'You won! 🎉' : `${esc(v.opponent.name)} won`;
+  return `
+    <div class="center result">
+      <h2>${title}</h2>
+      <p>${esc(v.result.reason)}</p>
+      <div class="reveal">
+        <div>${cardHTML(v.you.hidden, { size: 'md' })}<div class="cap">Your hidden card</div></div>
+        <div>${cardHTML(v.opponent.hidden, { size: 'md' })}<div class="cap">${esc(v.opponent.name)}'s hidden card</div></div>
+      </div>
+      <div class="two"><button class="btn" data-close>See the board</button><button class="btn primary" id="resultNew">New game</button></div>
+    </div>`;
 }
 
 const GUIDE_TABS = [

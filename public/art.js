@@ -6,77 +6,95 @@ const line = `stroke="${INK}" stroke-width="1.2" stroke-linejoin="round" stroke-
 
 // ---------- Locations ----------
 
+// Each location has its own dominant color so they're easy to tell apart:
+// beach = turquoise & gold, forest = deep green, kitchen = red checks,
+// park = sunset orange, library = brown wood, mountain = night & snow, garden = pink.
 const LOCATIONS = {
   beach: () => `
-    <rect width="100" height="100" fill="#bfe6ff"/>
-    <circle cx="82" cy="16" r="8" fill="#ffd54a"/>
-    <rect y="52" width="100" height="18" fill="#4fb3e8"/>
-    <path d="M0 56 q8 -3 16 0 t16 0 t16 0 t16 0 t16 0 t20 0" fill="none" stroke="#e3f6ff" stroke-width="1.2"/>
-    <rect y="68" width="100" height="32" fill="#f3d99b"/>
-    <path d="M6 84 l6 -2 M88 90 l5 -1" stroke="#d9b56a" stroke-width="1.2"/>
-    <path d="M10 70 q-2 -18 6 -26" fill="none" stroke="#8a5a2b" stroke-width="2"/>
-    <path d="M16 44 q-10 -2 -14 6 M16 44 q8 -6 14 -2 M16 44 q-4 -8 -12 -8 M16 44 q4 -8 12 -6" fill="none" stroke="#3a9a4a" stroke-width="2.2"/>`,
-  forest: () => `
-    <rect width="100" height="100" fill="#d8efd0"/>
-    <rect y="74" width="100" height="26" fill="#6aa84f"/>
-    ${[[10, 30, 0.9], [88, 26, 1], [24, 40, 0.7], [76, 40, 0.75]].map(([x, y, s]) => `
-      <g transform="translate(${x} ${y}) scale(${s})">
-        <rect x="-3" y="34" width="6" height="14" fill="#7a4e2a"/>
-        <polygon points="0,-6 -16,22 16,22" fill="#2f7d3a"/>
-        <polygon points="0,6 -18,38 18,38" fill="#28703a"/>
-      </g>`).join('')}
-    <circle cx="70" cy="86" r="2" fill="#e05555"/><circle cx="20" cy="90" r="2" fill="#e05555"/>`,
-  kitchen: () => `
-    <rect width="100" height="100" fill="#fff4dc"/>
-    ${Array.from({ length: 5 }, (_, r) => Array.from({ length: 10 }, (_, c) =>
-      `<rect x="${c * 10}" y="${r * 10}" width="10" height="10" fill="none" stroke="#f0dfb8" stroke-width="0.6"/>`).join('')).join('')}
-    <rect x="62" y="8" width="30" height="24" rx="2" fill="#bfe6ff" stroke="#c49a6c" stroke-width="2"/>
-    <line x1="77" y1="8" x2="77" y2="32" stroke="#c49a6c" stroke-width="1.5"/>
-    <rect y="50" width="100" height="8" fill="#b9825a"/>
-    <rect y="58" width="100" height="42" fill="#e9c9a0"/>
-    ${Array.from({ length: 5 }, (_, i) => `<rect x="${i * 20}" y="80" width="10" height="10" fill="#d9b48a"/><rect x="${i * 20 + 10}" y="90" width="10" height="10" fill="#d9b48a"/>`).join('')}
-    <g transform="translate(14 30)"><circle r="8" fill="#555"/><rect x="7" y="-1.5" width="10" height="3" fill="#555"/></g>
-    <path d="M10 50 q0 -6 4 -6 h4 q4 0 4 6 z" fill="#d04a3a"/>`,
-  park: () => `
-    <rect width="100" height="100" fill="#cdeafe"/>
-    <g fill="#fff"><circle cx="20" cy="16" r="6"/><circle cx="28" cy="14" r="8"/><circle cx="36" cy="17" r="5"/></g>
-    <rect y="66" width="100" height="34" fill="#8fd16a"/>
-    <rect x="80" y="40" width="5" height="30" fill="#7a4e2a"/>
-    <circle cx="82" cy="34" r="16" fill="#4caf50"/>
-    <g fill="#a86a3c">
-      <rect x="4" y="66" width="22" height="3"/><rect x="4" y="60" width="22" height="3"/>
-      <rect x="6" y="66" width="2" height="9"/><rect x="22" y="66" width="2" height="9"/>
+    <rect width="100" height="100" fill="#7fe0ee"/>
+    <g stroke="#ffb703" stroke-width="2" stroke-linecap="round">
+      ${Array.from({ length: 8 }, (_, i) => { const a = (i * Math.PI) / 4; return `<line x1="${82 + Math.cos(a) * 13}" y1="${16 + Math.sin(a) * 13}" x2="${82 + Math.cos(a) * 17}" y2="${16 + Math.sin(a) * 17}"/>`; }).join('')}
     </g>
-    <path d="M0 90 q50 -10 100 0 v10 h-100 z" fill="#e8d6a6"/>`,
+    <circle cx="82" cy="16" r="10" fill="#ffd23f"/>
+    <rect y="46" width="100" height="22" fill="#0fb5c9"/>
+    <path d="M0 52 q6 -3 12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t16 0 M0 60 q6 -3 12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t16 0" fill="none" stroke="#c9f6fb" stroke-width="1.2"/>
+    <path d="M0 66 q50 -6 100 0 v34 h-100 z" fill="#ffd166"/>
+    <path d="M10 68 q-3 -20 7 -30" fill="none" stroke="#8a5a2b" stroke-width="2.6"/>
+    <path d="M17 38 q-12 -2 -16 8 M17 38 q10 -7 17 -2 M17 38 q-5 -10 -14 -9 M17 38 q5 -10 14 -7" fill="none" stroke="#1f9d55" stroke-width="2.8" stroke-linecap="round"/>
+    <path d="M84 86 l2 -5 l2 5 l5 0 l-4 3 l2 5 l-5 -3 l-5 3 l2 -5 l-4 -3 z" fill="#f77f00"/>
+    <path d="M8 90 q4 -6 8 0 z" fill="#fff0d6" stroke="#e0a96d" stroke-width="0.6"/>`,
+  forest: () => `
+    <rect width="100" height="100" fill="#123d24"/>
+    ${[[6, 4, 0.8], [30, 0, 0.7], [56, 2, 0.75], [80, -2, 0.85], [100, 4, 0.8]].map(([x, y, s]) => `
+      <g transform="translate(${x} ${y}) scale(${s})"><polygon points="0,0 -18,50 18,50" fill="#0b2e1a"/><polygon points="0,20 -22,74 22,74" fill="#0b2e1a"/></g>`).join('')}
+    <ellipse cx="50" cy="92" rx="56" ry="26" fill="#4f8a35"/>
+    <ellipse cx="50" cy="94" rx="40" ry="16" fill="#6aa84f"/>
+    ${[[9, 34, 1], [91, 30, 1.05]].map(([x, y, s]) => `
+      <g transform="translate(${x} ${y}) scale(${s})">
+        <rect x="-3" y="44" width="6" height="14" fill="#5a3a1e"/>
+        <polygon points="0,-4 -16,24 16,24" fill="#2e8b3e"/><polygon points="0,10 -19,46 19,46" fill="#257a35"/>
+      </g>`).join('')}
+    ${[[22, 90], [80, 92]].map(([x, y]) => `
+      <rect x="${x - 1.2}" y="${y - 2}" width="2.4" height="5" fill="#f3ead8"/>
+      <path d="M${x - 5} ${y - 1} q5 -9 10 0 z" fill="#e63946"/>
+      <circle cx="${x - 2}" cy="${y - 3.4}" r="0.9" fill="#fff"/><circle cx="${x + 1.8}" cy="${y - 2.6}" r="0.9" fill="#fff"/>`).join('')}`,
+  kitchen: () => `
+    <rect width="100" height="56" fill="#ffffff"/>
+    ${Array.from({ length: 6 }, (_, r) => Array.from({ length: 10 }, (_, c) =>
+      ((r + c) % 2 ? `<rect x="${c * 10}" y="${r * 10}" width="10" height="10" fill="#e63946"/>` : '')).join('')).join('')}
+    <rect y="50" width="100" height="9" fill="#6b3f22"/>
+    <rect y="59" width="100" height="41" fill="#f6ead2"/>
+    ${Array.from({ length: 6 }, (_, i) => `<rect x="${i * 18 - 2}" y="64" width="14" height="16" rx="1.5" fill="#efdcb8" stroke="#d6bf96" stroke-width="0.8"/><circle cx="${i * 18 + 5}" cy="68" r="0.9" fill="#a0825a"/>`).join('')}
+    <rect y="84" width="100" height="16" fill="#d9c7a6"/>
+    <g transform="translate(14 42)"><path d="M-7 8 q0 -10 7 -10 q7 0 7 10 z" fill="#ffd23f" stroke="${INK}" stroke-width="1"/><path d="M7 2 l6 -4" stroke="${INK}" stroke-width="1.6"/><rect x="-2" y="-5" width="4" height="3" rx="1" fill="${INK}"/></g>
+    <g transform="translate(88 44)"><rect x="-5" y="-4" width="10" height="10" rx="2" fill="#fff" stroke="${INK}" stroke-width="1"/><path d="M5 -1 q4 0 4 3 q0 3 -4 3" fill="none" stroke="${INK}" stroke-width="1"/></g>`,
+  park: () => `
+    <defs><linearGradient id="park-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6b4a"/><stop offset="0.6" stop-color="#ffa45c"/><stop offset="1" stop-color="#ffd59a"/></linearGradient></defs>
+    <rect width="100" height="100" fill="url(#park-sky)"/>
+    <circle cx="70" cy="62" r="14" fill="#ffe08a"/>
+    <path d="M0 62 q20 -8 40 -2 q30 -10 60 0 v38 h-100 z" fill="#3f7d2c"/>
+    <path d="M0 70 h100 v30 h-100 z" fill="#5c9e3a"/>
+    <ellipse cx="78" cy="86" rx="16" ry="5" fill="#4aa3d8" stroke="#2f7fb0" stroke-width="0.8"/>
+    <g fill="#3a2414"><rect x="88" y="34" width="5" height="34"/><circle cx="90" cy="28" r="13"/><circle cx="82" cy="34" r="8"/></g>
+    <g stroke="#2b2b2b" stroke-width="1.4" fill="#2b2b2b">
+      <line x1="16" y1="78" x2="16" y2="40"/><rect x="12.5" y="35" width="7" height="6" rx="1" fill="#ffe8a8"/>
+    </g>
+    <g fill="#8b4a2b"><rect x="2" y="72" width="22" height="3"/><rect x="2" y="66" width="22" height="3"/><rect x="4" y="72" width="2" height="8"/><rect x="20" y="72" width="2" height="8"/></g>`,
   library: () => `
-    <rect width="100" height="100" fill="#8a5a3b"/>
-    ${[6, 30].map((y) => `
-      <rect x="0" y="${y + 20}" width="100" height="3" fill="#5c3a22"/>
+    <rect width="100" height="100" fill="#6b3e22"/>
+    ${[4, 28].map((y) => `
+      <rect x="0" y="${y + 20}" width="100" height="3" fill="#3f2312"/>
       ${Array.from({ length: 14 }, (_, i) => {
         const colors = ['#c0392b', '#2e86c1', '#27ae60', '#f1c40f', '#8e44ad', '#e67e22', '#16a085'];
         const h = 14 + ((i * 7 + y) % 6);
         return `<rect x="${2 + i * 7}" y="${y + 20 - h}" width="6" height="${h}" fill="${colors[(i + y) % colors.length]}"/>`;
       }).join('')}`).join('')}
-    <rect y="62" width="100" height="38" fill="#b07a4f"/>
-    ${Array.from({ length: 6 }, (_, i) => `<line x1="${i * 20}" y1="62" x2="${i * 20 - 8}" y2="100" stroke="#9a6640" stroke-width="1"/>`).join('')}
-    <rect x="6" y="80" width="18" height="3" fill="#7a2e2e"/>`,
+    <rect y="56" width="100" height="44" fill="#a0683e"/>
+    ${Array.from({ length: 7 }, (_, i) => `<line x1="${i * 18}" y1="56" x2="${i * 18 - 10}" y2="100" stroke="#8a5531" stroke-width="1"/>`).join('')}
+    <ellipse cx="50" cy="90" rx="40" ry="8" fill="#7a2e3a"/>
+    <ellipse cx="50" cy="90" rx="34" ry="5.5" fill="none" stroke="#d4a24c" stroke-width="0.8"/>
+    <g transform="translate(90 58)"><rect x="-1" y="0" width="2" height="22" fill="#d4a24c"/><path d="M-6 0 h12 l-3 -8 h-6 z" fill="#2e7d4f"/></g>`,
   mountain: () => `
-    <rect width="100" height="100" fill="#d6ecff"/>
-    <polygon points="-10,72 28,14 66,72" fill="#8a96a8"/>
-    <polygon points="28,14 19,28 25,26 31,30 37,27" fill="#fff"/>
-    <polygon points="40,72 76,22 112,72" fill="#7a8698"/>
-    <polygon points="76,22 68,34 74,32 80,36 84,33" fill="#fff"/>
-    <rect y="70" width="100" height="30" fill="#9cc58a"/>
-    <path d="M0 78 q25 -6 50 0 t50 0 v22 h-100z" fill="#86b374"/>`,
+    <rect width="100" height="100" fill="#1b2452"/>
+    ${[[8, 8], [22, 18], [40, 6], [58, 14], [92, 30], [12, 30], [70, 6]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="0.9" fill="#fff"/>`).join('')}
+    <path d="M86 6 a8 8 0 1 0 6 13 a6.5 6.5 0 1 1 -6 -13 z" fill="#fff5c2"/>
+    <polygon points="-14,74 26,16 66,74" fill="#5c6a96"/>
+    <polygon points="26,16 15,32 21,30 27,35 33,30 38,33" fill="#fff"/>
+    <polygon points="36,74 74,24 114,74" fill="#4a5785"/>
+    <polygon points="74,24 64,37 70,35 76,40 82,36 86,38" fill="#fff"/>
+    <path d="M0 70 q25 -6 50 0 t50 0 v30 h-100 z" fill="#eef4ff"/>
+    <path d="M0 82 q30 -4 60 2 t40 0" fill="none" stroke="#c9d6f0" stroke-width="1"/>
+    <g transform="translate(90 66)"><rect x="-1" y="8" width="2" height="5" fill="#5a3a1e"/><polygon points="0,-6 -6,9 6,9" fill="#1f5c3a"/><polygon points="0,-6 -3,0 3,0" fill="#fff"/></g>`,
   garden: () => `
-    <rect width="100" height="100" fill="#e2f4ff"/>
-    ${Array.from({ length: 11 }, (_, i) => `<path d="M${i * 10 + 1} 66 v-20 l4 -4 l4 4 v20 z" fill="#fffaf0" stroke="#d8ccb4" stroke-width="0.6"/>`).join('')}
-    <rect y="52" width="100" height="3" fill="#fffaf0" stroke="#d8ccb4" stroke-width="0.4"/>
-    <rect y="66" width="100" height="34" fill="#7cc35a"/>
-    ${[[8, 80, '#e84d6f'], [20, 92, '#f5b82e'], [86, 82, '#9b59b6'], [74, 94, '#e84d6f'], [94, 72, '#f5b82e']].map(([x, y, c]) => `
-      <line x1="${x}" y1="${y}" x2="${x}" y2="${y + 8}" stroke="#2f7d3a" stroke-width="1.2"/>
-      <g fill="${c}"><circle cx="${x - 2.5}" cy="${y}" r="2.2"/><circle cx="${x + 2.5}" cy="${y}" r="2.2"/><circle cx="${x}" cy="${y - 2.5}" r="2.2"/><circle cx="${x}" cy="${y + 2.5}" r="2.2"/></g>
-      <circle cx="${x}" cy="${y}" r="1.6" fill="#fff3b0"/>`).join('')}`,
+    <rect width="100" height="100" fill="#ffd3e6"/>
+    <path d="M0 58 q8 -10 16 0 q8 -10 16 0 q8 -10 16 0 q8 -10 16 0 q8 -10 16 0 q8 -10 20 0 v12 h-100 z" fill="#3e9b4f"/>
+    <rect y="66" width="100" height="34" fill="#8fd36b"/>
+    ${[[8, 46, '#e5007e'], [26, 44, '#ff5d8f'], [74, 46, '#b14fd8'], [92, 44, '#e5007e'],
+       [6, 80, '#ff5d8f'], [18, 92, '#b14fd8'], [86, 80, '#e5007e'], [76, 94, '#ff5d8f'], [94, 92, '#b14fd8']].map(([x, y, c]) => `
+      <line x1="${x}" y1="${y}" x2="${x}" y2="${y + 9}" stroke="#2f7d3a" stroke-width="1.3"/>
+      <g fill="${c}"><circle cx="${x - 3}" cy="${y}" r="2.8"/><circle cx="${x + 3}" cy="${y}" r="2.8"/><circle cx="${x}" cy="${y - 3}" r="2.8"/><circle cx="${x}" cy="${y + 3}" r="2.8"/></g>
+      <circle cx="${x}" cy="${y}" r="1.9" fill="#ffe14d"/>`).join('')}
+    <g transform="translate(56 14)"><path d="M0 0 q-6 -6 -8 0 q2 6 8 0 q6 -6 8 0 q-2 6 -8 0" fill="#7b2cbf"/><line x1="0" y1="-2" x2="0" y2="3" stroke="${INK}" stroke-width="0.8"/></g>`,
 };
 
 // ---------- Animals ----------
